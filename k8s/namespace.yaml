@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: digital-notice-board
+  labels:
+    app.kubernetes.io/name: digital-notice-board
+    app.kubernetes.io/part-of: sse-lab-exam
+    pod-security.kubernetes.io/enforce: baseline

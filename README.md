@@ -217,26 +217,106 @@ npm run dev
 
 ---
 
-## 8. Current Implementation Status
+## 8. Automated Testing, Fuzzing & Verification
 
-### Completed in Task 1:
-- [x] Complete project structure and configuration (`frontend/`, `backend/`, `database/`, `docs/`, `docker-compose.yml`)
-- [x] PostgreSQL database migrations for `users`, `notices`, `audit_logs`, and schema tracking
-- [x] Database seeder script with bcrypt-hashed demo credentials and sample lifecycle notices
-- [x] Secure authentication module (bcrypt, JWT HS256, timing-attack mitigation)
-- [x] RBAC authorization middleware (Student, Faculty, Admin)
-- [x] Notice lifecycle enforcement (Draft, Scheduled, Published, Archived)
-- [x] Horizontal ownership authorization enforcement (Faculty-to-Faculty tamper prevention)
-- [x] Security audit logging service with dedicated Admin viewer
-- [x] Input validation with Zod schemas for all endpoints
-- [x] Rate limiting (general API + stricter auth endpoint limit)
-- [x] HTTP security headers via Helmet and strict CORS
-- [x] Clean light-theme college portal UI in React + TypeScript + Tailwind CSS
-- [x] Zero vulnerability dependency audit across both backend and frontend
+The application includes automated unit, integration, end-to-end, and security test suites using the native Node.js 22 test runner (`node:test` and `node:assert/strict`) via `tsx`, ensuring zero heavyweight third-party testing dependencies.
 
-### Remaining for Subsequent Phases:
-- [ ] Containerization: Production Dockerfiles with multi-stage builds and non-root users
-- [ ] Orchestration: Minikube-compatible Kubernetes manifests (Deployments, Services, ConfigMaps, Secrets, SecurityContext)
-- [ ] CI/CD: GitHub Actions pipeline (Lint, Test, SAST, Docker Build)
-- [ ] Automated Test Suite: Jest/Supertest integration tests, horizontal authorization tests, XSS fuzzing script
-- [ ] Academic Documentation artifacts in `docs/` (UML, DFD, STRIDE threat models, attack trees, sprint tasks)
+### Running Test Suites
+
+```bash
+# Execute all unit, integration, e2e, and security tests (16/16 pass)
+npm test
+
+# Execute input boundary fuzzing suite (10/10 pass)
+npm run test:fuzz
+
+# Run ESLint across backend and frontend
+npm run lint
+
+# Run security dependency vulnerability audit
+npm run audit
+```
+
+### Test Suite Inventory
+
+| Test Suite Category | File Path | Focus / Verification Criteria |
+|---|---|---|
+| **Unit: Auth Validation** | `tests/unit/auth.test.ts` | Zod schema validation, email syntax, password complexity constraints. |
+| **Unit: RBAC & Notice Schema** | `tests/unit/rbac.test.ts` | Role boundaries, notice fields validation, temporal date ordering (`expires_at > scheduled_at`). |
+| **Integration: Notice Lifecycle** | `tests/integration/notice_lifecycle.test.ts` | Database lifecycle transitions (`DRAFT` → `PUBLISHED` → `ARCHIVED`). |
+| **E2E: Complete Notice Flow** | `tests/e2e/e2e_system.test.ts` | Faculty authenticates → publishes notice → Student authenticates → retrieves notice. |
+| **Security: Horizontal RBAC** | `tests/security/horizontal_authorization.test.ts` | **SR-04 Defense**: Faculty A notice cannot be modified by Faculty B (HTTP 403 Forbidden + Audit Log generated). |
+| **Input Fuzzing** | `tests/fuzzing/fuzz_inputs.ts` | 10 boundary cases (XSS, SQLi strings, length overflows, null-byte sanitization). |
+
+---
+
+## 9. Containerization (Docker & Docker Compose)
+
+The application provides production-ready multi-stage Docker builds engineered for minimal surface area and non-root execution.
+
+### Architecture
+- **Backend Container**: Multi-stage build (`node:22-alpine`), compiles TypeScript, strips dev dependencies, executes as unprivileged user `USER node` (image size: ~176 MB).
+- **Frontend Container**: Multi-stage build (`node:22-alpine` builder → `nginx:1.27-alpine` runtime), serves optimized static bundle with custom hardened `nginx.conf`, dynamic DNS resolver (`127.0.0.11`), and reverse proxies `/api/` to backend (image size: ~48.5 MB).
+- **Database Container**: Official `postgres:16-alpine`.
+
+### Running with Docker Compose
+```bash
+# Build all images
+docker compose build
+
+# Start the full stack (PostgreSQL, Backend API, Frontend Nginx)
+docker compose up -d
+
+# Verify services
+docker compose ps
+curl http://localhost:8099/healthz
+curl http://localhost:5000/api/health
+```
+
+---
+
+## 10. Kubernetes Orchestration (`k8s/`)
+
+Production-ready, Minikube-compatible Kubernetes manifests are located in `k8s/` adhering to Pod Security Standards:
+
+* [`k8s/namespace.yaml`](k8s/namespace.yaml): Isolated namespace `notice-board`.
+* [`k8s/config/configmap.yaml`](k8s/config/configmap.yaml) & [`k8s/config/secret.yaml`](k8s/config/secret.yaml): External configuration and base64-encoded secrets.
+* [`k8s/postgres-deployment.yaml`](k8s/postgres-deployment.yaml) & [`k8s/postgres-service.yaml`](k8s/postgres-service.yaml): Internal database with persistent volume and ClusterIP.
+* [`k8s/backend-deployment.yaml`](k8s/backend-deployment.yaml) & [`k8s/backend-service.yaml`](k8s/backend-service.yaml): API pods running with `runAsNonRoot: true`, `runAsUser: 1000`, `capabilities: { drop: ["ALL"] }`, readiness/liveness probes (`/api/health`), and ClusterIP service.
+* [`k8s/frontend-deployment.yaml`](k8s/frontend-deployment.yaml) & [`k8s/frontend-service.yaml`](k8s/frontend-service.yaml): Reverse proxy frontend exposed via NodePort `30080`.
+
+### Deploying to Kubernetes / Minikube
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/config/
+kubectl apply -f k8s/
+kubectl get pods -n notice-board
+```
+
+---
+
+## 11. CI/CD Pipeline (`.github/workflows/secure-ci.yml`)
+
+A declarative GitHub Actions workflow enforces automated quality and security gates on every push and pull request to `main` and `develop`:
+
+1. **Checkout**: Source code retrieval (`actions/checkout@v4`).
+2. **Install Dependencies**: Reproducible installs via `npm ci`.
+3. **Build**: Strict TypeScript compilation (`tsc`) and Vite bundling.
+4. **Automated Testing**: Spawns PostgreSQL service container and runs `npm test`.
+5. **Static Security / SAST**: ESLint security rules with `@typescript-eslint`.
+6. **Dependency Audit**: High/critical vulnerability gate via `npm audit --audit-level=high`.
+7. **Container Package**: Multi-stage Docker builds validating non-root container images.
+
+---
+
+## 12. Security Review & Examination Evidence
+
+Detailed Phase 11–16 examination evidence and compliance documentation are maintained under `docs/`:
+
+* [`docs/security/phase-11-secure-build.md`](docs/security/phase-11-secure-build.md): Secure development environment, Git branching, zero-vulnerability dependency audits, ESLint flat configuration, and secret management.
+* [`docs/security/phase-12-secure-coding-refactoring.md`](docs/security/phase-12-secure-coding-refactoring.md): Repository pattern extraction (`NoticesRepository`), centralized horizontal authorization (`assertNoticeOwnership`), and code duplication elimination.
+* [`docs/deployment/phase-13-docker-kubernetes.md`](docs/deployment/phase-13-docker-kubernetes.md): Multi-stage container builds, non-root execution, Nginx reverse proxy configuration, and Kubernetes manifests.
+* [`docs/testing/phase-14-ci-cd-testing.md`](docs/testing/phase-14-ci-cd-testing.md): Automated test execution (16/16 passed), 10 fuzzing cases, and resolution of real defect `DEF-01` (null-byte sanitization).
+* [`docs/deployment/phase-15-hardening-deployment.md`](docs/deployment/phase-15-hardening-deployment.md): Audit logging (10 security events), 8 monitoring metrics/alerts, physical/operational controls, and hardening checklists.
+* [`docs/security/phase-16-final-security-review.md`](docs/security/phase-16-final-security-review.md): Complete traceability chain for **SR-04** (Requirement → Use Case → DFD → STRIDE Threat → Vulnerability → Attack Tree → User Story → Sprint Task → Implementation → Test → Deployment Control), top 3 security risks, and genuine environment limitations.
+

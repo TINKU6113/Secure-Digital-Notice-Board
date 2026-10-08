@@ -1,0 +1,79 @@
+name: Secure CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  security-and-build:
+    name: Build, Lint, Test & Package
+    runs-on: ubuntu-latest
+
+    steps:
+      # Stage 1: Checkout
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Stage 2: Install Dependencies
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Root Dependencies
+        run: npm ci || npm install
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci || npm install
+
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci || npm install
+
+      # Stage 3: Build
+      - name: Compile Backend & Frontend
+        run: |
+          npm --prefix backend run build
+          npm --prefix frontend run build
+
+      # Stage 4: Static Code Analysis / Lint
+      - name: Run Static Security Lint (ESLint)
+        working-directory: ./backend
+        run: npm run lint
+
+      # Stage 5: Dependency Security Audit
+      - name: Dependency Vulnerability Audit
+        run: |
+          echo "Auditing backend..."
+          npm --prefix backend audit --audit-level=high
+          echo "Auditing frontend..."
+          npm --prefix frontend audit --audit-level=high
+
+      # Stage 6: Unit & Security Tests
+      - name: Run Test Suite
+        env:
+          JWT_SECRET: super_secret_ci_test_jwt_key_minimum_32_characters_long
+        run: |
+          npx tsx --test tests/unit/*.test.ts
+
+      # Stage 7: Docker Build Stage
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Backend Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          tags: digital-notice-board-backend:ci
+
+      - name: Build Frontend Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          tags: digital-notice-board-frontend:ci

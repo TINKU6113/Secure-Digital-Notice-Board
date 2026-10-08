@@ -81,7 +81,12 @@ export const scheduleNoticeSchema = z
   );
 
 export const queryNoticeSchema = z.object({
-  search: z.string().trim().max(100).optional(),
+  search: z
+    .string()
+    .trim()
+    .max(100)
+    .transform((val) => val.replace(/\0/g, ''))
+    .optional(),
   department: DepartmentEnum.optional(),
   category: CategoryEnum.optional(),
   priority: PriorityEnum.optional(),

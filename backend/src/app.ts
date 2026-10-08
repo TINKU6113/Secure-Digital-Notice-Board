@@ -35,14 +35,28 @@ app.use(
 );
 
 // 2. Strict CORS Configuration
+const allowedOrigins = env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);
+
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps, curl, or same-origin)
-      if (!origin || origin === env.CORS_ORIGIN) {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      const isExplicitlyAllowed = allowedOrigins.includes(origin);
+      const isDevLocalhost =
+        env.NODE_ENV === 'development' &&
+        /^http:\/\/(localhost|127\.0\.0\.1):(5173|5174|5175)$/.test(origin);
+
+      if (isExplicitlyAllowed || isDevLocalhost) {
         callback(null, true);
       } else {
-        callback(new Error(`CORS violation: Origin ${origin} not permitted`));
+        const corsErr: any = new Error(`CORS violation: Origin ${origin} not permitted`);
+        corsErr.statusCode = 403;
+        corsErr.code = 'CORS_FORBIDDEN';
+        callback(corsErr);
       }
     },
     credentials: true,

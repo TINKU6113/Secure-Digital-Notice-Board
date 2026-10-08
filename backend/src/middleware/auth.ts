@@ -37,7 +37,20 @@ export async function authenticate(
     let decoded: any;
     try {
       decoded = verifyToken(token);
-    } catch (err: any) {
+    } catch (_err: any) {
+      AuditService.record({
+        action: 'AUTHENTICATION_FAILURE',
+        resourceType: 'AUTH',
+        resourceId: req.originalUrl,
+        status: 'FAILURE',
+        ipAddress: req.ip || req.socket.remoteAddress,
+        userAgent: req.headers['user-agent'],
+        metadata: {
+          reason: 'INVALID_OR_EXPIRED_TOKEN',
+          endpoint: req.originalUrl,
+        },
+      });
+
       res.status(401).json({
         success: false,
         error: {
