@@ -1,0 +1,41 @@
+import { Request, Response, NextFunction } from 'express';
+import { ZodTypeAny, ZodError } from 'zod';
+
+export function validateRequest(schemas: {
+  body?: ZodTypeAny;
+  query?: ZodTypeAny;
+  params?: ZodTypeAny;
+}) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (schemas.body) {
+        req.body = await schemas.body.parseAsync(req.body);
+      }
+      if (schemas.query) {
+        req.query = await schemas.query.parseAsync(req.query);
+      }
+      if (schemas.params) {
+        req.params = await schemas.params.parseAsync(req.params);
+      }
+      next();
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const issues = error.errors.map((err) => ({
+          field: err.path.join('.'),
+          message: err.message,
+        }));
+
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Input validation failed',
+            details: issues,
+          },
+        });
+        return;
+      }
+      next(error);
+    }
+  };
+}
