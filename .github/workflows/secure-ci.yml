@@ -22,6 +22,9 @@ jobs:
         with:
           node-version: 22
           cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
 
       - name: Install Root Dependencies
         run: npm ci || npm install
@@ -40,7 +43,7 @@ jobs:
           npm --prefix backend run build
           npm --prefix frontend run build
 
-      # Stage 4: Static Code Analysis / Lint
+      # Stage 4: Static Security Check
       - name: Run Static Security Lint (ESLint)
         working-directory: ./backend
         run: npm run lint
@@ -53,14 +56,14 @@ jobs:
           echo "Auditing frontend..."
           npm --prefix frontend audit --audit-level=high
 
-      # Stage 6: Unit & Security Tests
+      # Stage 6: Automated Tests
       - name: Run Test Suite
         env:
           JWT_SECRET: super_secret_ci_test_jwt_key_minimum_32_characters_long
         run: |
           npx tsx --test tests/unit/*.test.ts
 
-      # Stage 7: Docker Build Stage
+      # Stage 7: Docker Package Build
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
